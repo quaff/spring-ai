@@ -21,15 +21,21 @@ import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
-import org.antlr.runtime.Token;
-import org.antlr.runtime.TokenStream;
-import org.stringtemplate.v4.ST;
-import org.stringtemplate.v4.compiler.STLexer;
+import org.springframework.context.expression.MapAccessor;
+import org.springframework.expression.EvaluationContext;
+import org.springframework.expression.Expression;
+import org.springframework.expression.common.CompositeStringExpression;
+import org.springframework.expression.common.TemplateParserContext;
+import org.springframework.expression.spel.standard.SpelExpression;
+import org.springframework.expression.spel.standard.SpelExpressionParser;
+import org.springframework.expression.spel.support.DataBindingPropertyAccessor;
+import org.springframework.expression.spel.support.SimpleEvaluationContext;
 
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -43,7 +49,10 @@ public class PromptTemplate implements PromptTemplateActions, PromptTemplateMess
 
 	protected TemplateFormat templateFormat = TemplateFormat.ST;
 
-	private ST st;
+	private Expression expression;
+
+	private EvaluationContext evaluationContext = SimpleEvaluationContext
+			.forPropertyAccessors(new MapAccessor(false), DataBindingPropertyAccessor.forReadOnlyAccess()).build();
 
 	private Map<String, Object> dynamicModel = new HashMap<>();
 
@@ -55,7 +64,7 @@ public class PromptTemplate implements PromptTemplateActions, PromptTemplateMess
 			throw new RuntimeException("Failed to read resource", ex);
 		}
 		try {
-			this.st = new ST(this.template, '{', '}');
+			this.expression = parseExpression(this.template);
 		}
 		catch (Exception ex) {
 			throw new IllegalArgumentException("The template string is not valid.", ex);
@@ -66,7 +75,7 @@ public class PromptTemplate implements PromptTemplateActions, PromptTemplateMess
 		this.template = template;
 		// If the template string is not valid, an exception will be thrown
 		try {
-			this.st = new ST(this.template, '{', '}');
+			this.expression = parseExpression(this.template);
 		}
 		catch (Exception ex) {
 			throw new IllegalArgumentException("The template string is not valid.", ex);
@@ -77,7 +86,7 @@ public class PromptTemplate implements PromptTemplateActions, PromptTemplateMess
 		this.template = template;
 		// If the template string is not valid, an exception will be thrown
 		try {
-			this.st = new ST(this.template, '{', '}');
+			this.expression = parseExpression(this.template);
 			for (Entry<String, Object> entry : model.entrySet()) {
 				add(entry.getKey(), entry.getValue());
 			}
@@ -96,7 +105,7 @@ public class PromptTemplate implements PromptTemplateActions, PromptTemplateMess
 		}
 		// If the template string is not valid, an exception will be thrown
 		try {
-			this.st = new ST(this.template, '{', '}');
+			this.expression = parseExpression(this.template);
 			for (Entry<String, Object> entry : model.entrySet()) {
 				this.add(entry.getKey(), entry.getValue());
 			}
@@ -107,7 +116,6 @@ public class PromptTemplate implements PromptTemplateActions, PromptTemplateMess
 	}
 
 	public void add(String name, Object value) {
-		this.st.add(name, value);
 		this.dynamicModel.put(name, value);
 	}
 
@@ -123,25 +131,27 @@ public class PromptTemplate implements PromptTemplateActions, PromptTemplateMess
 	@Override
 	public String render() {
 		validate(this.dynamicModel);
-		return this.st.render();
+		return (String) this.expression.getValue(this.evaluationContext, this.dynamicModel);
 	}
 
 	@Override
 	public String render(Map<String, Object> model) {
 		validate(model);
+		Map<String, Object> variables = new LinkedHashMap<>(this.dynamicModel);
 		for (Entry<String, Object> entry : model.entrySet()) {
-			if (this.st.getAttribute(entry.getKey()) != null) {
-				this.st.remove(entry.getKey());
-			}
 			if (entry.getValue() instanceof Resource) {
-				this.st.add(entry.getKey(), renderResource((Resource) entry.getValue()));
+				variables.put(entry.getKey(), renderResource((Resource) entry.getValue()));
 			}
 			else {
-				this.st.add(entry.getKey(), entry.getValue());
+				variables.put(entry.getKey(), entry.getValue());
 			}
-
 		}
-		return this.st.render();
+		return (String) this.expression.getValue(this.evaluationContext, variables);
+	}
+
+	private Expression parseExpression(String template) {
+		SpelExpressionParser parser = new SpelExpressionParser();
+		return parser.parseExpression(template, new TemplateParserContext("{", "}"));
 	}
 
 	private String renderResource(Resource resource) {
@@ -189,25 +199,12 @@ public class PromptTemplate implements PromptTemplateActions, PromptTemplateMess
 	}
 
 	public Set<String> getInputVariables() {
-		TokenStream tokens = this.st.impl.tokens;
 		Set<String> inputVariables = new HashSet<>();
-		boolean isInsideList = false;
-
-		for (int i = 0; i < tokens.size(); i++) {
-			Token token = tokens.get(i);
-
-			if (token.getType() == STLexer.LDELIM && i + 1 < tokens.size()
-					&& tokens.get(i + 1).getType() == STLexer.ID) {
-				if (i + 2 < tokens.size() && tokens.get(i + 2).getType() == STLexer.COLON) {
-					inputVariables.add(tokens.get(i + 1).getText());
-					isInsideList = true;
+		if (this.expression instanceof CompositeStringExpression cse) {
+			for (Expression ex : cse.getExpressions()) {
+				if (ex instanceof SpelExpression se) {
+					inputVariables.add(se.getExpressionString());
 				}
-			}
-			else if (token.getType() == STLexer.RDELIM) {
-				isInsideList = false;
-			}
-			else if (!isInsideList && token.getType() == STLexer.ID) {
-				inputVariables.add(token.getText());
 			}
 		}
 
