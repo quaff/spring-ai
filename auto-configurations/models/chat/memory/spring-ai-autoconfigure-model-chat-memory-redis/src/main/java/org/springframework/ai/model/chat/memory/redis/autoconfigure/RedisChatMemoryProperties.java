@@ -30,19 +30,25 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Configuration properties for Redis-based chat memory.
  *
  * @author Brian Sam-Bodden
+ * @author Yanming Zhou
  */
 @ConfigurationProperties(prefix = "spring.ai.chat.memory.redis")
 public class RedisChatMemoryProperties {
 
 	/**
-	 * Redis server host.
+	 * Redis server host, fall back to <code>spring.data.redis.host</code> if unspecified.
 	 */
-	private String host = "localhost";
+	private @Nullable String host;
 
 	/**
-	 * Redis server port.
+	 * Redis server port, fall back to <code>spring.data.redis.port</code> if unspecified.
 	 */
-	private int port = 6379;
+	private @Nullable Integer port;
+
+	/**
+	 * Redis database.
+	 */
+	private int database = 0;
 
 	/**
 	 * Name of the Redis search index.
@@ -85,7 +91,7 @@ public class RedisChatMemoryProperties {
 	 */
 	private List<Map<String, String>> metadataFields = new ArrayList<>();
 
-	public String getHost() {
+	public @Nullable String getHost() {
 		return this.host;
 	}
 
@@ -93,12 +99,20 @@ public class RedisChatMemoryProperties {
 		this.host = host;
 	}
 
-	public int getPort() {
+	public @Nullable Integer getPort() {
 		return this.port;
 	}
 
-	public void setPort(int port) {
+	public void setPort(Integer port) {
 		this.port = port;
+	}
+
+	public int getDatabase() {
+		return this.database;
+	}
+
+	public void setDatabase(int database) {
+		this.database = database;
 	}
 
 	public String getIndexName() {
