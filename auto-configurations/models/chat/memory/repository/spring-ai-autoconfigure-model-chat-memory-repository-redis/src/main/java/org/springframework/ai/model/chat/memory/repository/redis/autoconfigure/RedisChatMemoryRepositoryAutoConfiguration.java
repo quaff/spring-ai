@@ -16,18 +16,22 @@
 
 package org.springframework.ai.model.chat.memory.repository.redis.autoconfigure;
 
+import org.jspecify.annotations.Nullable;
+import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.RedisClient;
 
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.repository.redis.RedisChatMemoryRepository;
 import org.springframework.ai.model.chat.memory.autoconfigure.ChatMemoryAutoConfiguration;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.bind.BindResult;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 import org.springframework.util.StringUtils;
@@ -69,16 +73,11 @@ public class RedisChatMemoryRepositoryAutoConfiguration {
 	}
 
 	@Bean
-	@ConditionalOnMissingBean
-	public RedisClient jedisClient(RedisChatMemoryRepositoryProperties properties) {
-		return RedisClient.builder().hostAndPort(properties.getHost(), properties.getPort()).build();
-	}
-
-	@Bean
 	@ConditionalOnMissingBean({ RedisChatMemoryRepository.class, ChatMemory.class, ChatMemoryRepository.class })
-	public RedisChatMemoryRepository redisChatMemoryRepository(RedisClient jedisClient,
-			RedisChatMemoryRepositoryProperties properties) {
-		RedisChatMemoryRepository.Builder builder = RedisChatMemoryRepository.builder().jedisClient(jedisClient);
+	public RedisChatMemoryRepository redisChatMemoryRepository(RedisChatMemoryRepositoryProperties properties,
+			ObjectProvider<DataRedisProperties> dataRedisProperties) {
+		RedisChatMemoryRepository.Builder builder = RedisChatMemoryRepository.builder()
+			.jedisClient(jedisClient(properties, dataRedisProperties.getIfAvailable()));
 
 		// Apply configuration if provided
 		if (StringUtils.hasText(properties.getIndexName())) {
@@ -107,6 +106,41 @@ public class RedisChatMemoryRepositoryAutoConfiguration {
 
 		if (properties.getMetadataFields() != null && !properties.getMetadataFields().isEmpty()) {
 			builder.metadataFields(properties.getMetadataFields());
+		}
+
+		return builder.build();
+	}
+
+	private RedisClient jedisClient(RedisChatMemoryRepositoryProperties properties,
+			@Nullable DataRedisProperties dataRedisProperties) {
+		String host = properties.getHost();
+		if (host == null) {
+			if (dataRedisProperties != null) {
+				host = dataRedisProperties.getHost();
+			}
+			else {
+				host = "localhost";
+			}
+		}
+		Integer port = properties.getPort();
+		if (port == null) {
+			if (dataRedisProperties != null) {
+				port = dataRedisProperties.getPort();
+			}
+			else {
+				port = 6379;
+			}
+		}
+		var builder = RedisClient.builder().hostAndPort(host, port);
+		var clientConfigBuilder = DefaultJedisClientConfig.builder().database(properties.getDatabase());
+		if (dataRedisProperties != null) {
+			clientConfigBuilder.ssl(dataRedisProperties.getSsl().isEnabled())
+				.clientName(dataRedisProperties.getClientName())
+				.password(dataRedisProperties.getPassword());
+			if (dataRedisProperties.getTimeout() != null) {
+				clientConfigBuilder.timeoutMillis((int) dataRedisProperties.getTimeout().toMillis());
+			}
+			builder.clientConfig(clientConfigBuilder.build());
 		}
 
 		return builder.build();

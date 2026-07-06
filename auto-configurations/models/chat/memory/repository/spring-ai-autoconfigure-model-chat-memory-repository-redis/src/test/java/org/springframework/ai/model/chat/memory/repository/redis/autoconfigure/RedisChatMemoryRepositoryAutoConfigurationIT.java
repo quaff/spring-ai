@@ -17,9 +17,13 @@
 package org.springframework.ai.model.chat.memory.repository.redis.autoconfigure;
 
 import java.time.Duration;
+import java.util.List;
 
 import com.redis.testcontainers.RedisStackContainer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -32,6 +36,8 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
+@ParameterizedClass
+@MethodSource("contextRunners")
 class RedisChatMemoryRepositoryAutoConfigurationIT {
 
 	@Container
@@ -39,13 +45,27 @@ class RedisChatMemoryRepositoryAutoConfigurationIT {
 			RedisStackContainer.DEFAULT_IMAGE_NAME.withTag(RedisStackContainer.DEFAULT_TAG))
 		.withExposedPorts(6379);
 
-	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-		.withConfiguration(AutoConfigurations.of(RedisChatMemoryRepositoryAutoConfiguration.class,
-				DataRedisAutoConfiguration.class))
-		.withPropertyValues("spring.data.redis.host=" + redisContainer.getHost(),
-				"spring.data.redis.port=" + redisContainer.getFirstMappedPort(),
-				"spring.ai.chat.memory.repository.redis.host=" + redisContainer.getHost(),
-				"spring.ai.chat.memory.repository.redis.port=" + redisContainer.getFirstMappedPort());
+	static List<ApplicationContextRunner> contextRunners() {
+		return List.of(
+				new ApplicationContextRunner()
+					.withConfiguration(AutoConfigurations.of(RedisChatMemoryRepositoryAutoConfiguration.class))
+					.withPropertyValues("spring.ai.chat.memory.repository.redis.host=" + redisContainer.getHost(),
+							"spring.ai.chat.memory.repository.redis.port=" + redisContainer.getFirstMappedPort()),
+				new ApplicationContextRunner()
+					.withConfiguration(AutoConfigurations.of(RedisChatMemoryRepositoryAutoConfiguration.class,
+							DataRedisAutoConfiguration.class))
+					.withPropertyValues("spring.data.redis.host=" + redisContainer.getHost(),
+							"spring.data.redis.port=" + redisContainer.getFirstMappedPort()),
+				new ApplicationContextRunner()
+					.withConfiguration(AutoConfigurations.of(RedisChatMemoryRepositoryAutoConfiguration.class,
+							DataRedisAutoConfiguration.class))
+					.withPropertyValues("spring.ai.chat.memory.repository.redis.host=" + redisContainer.getHost(),
+							"spring.ai.chat.memory.repository.redis.port=" + redisContainer.getFirstMappedPort(),
+							"spring.data.redis.host=invalid-host", "spring.data.redis.port=6379"));
+	}
+
+	@Parameter
+	ApplicationContextRunner contextRunner;
 
 	@Test
 	void autoConfigurationRegistersExpectedBeans() {
