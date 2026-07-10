@@ -24,6 +24,7 @@ import io.micrometer.observation.tck.TestObservationRegistry;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import redis.clients.jedis.RedisClient;
 
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -42,6 +43,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * @author Julien Ruaux
@@ -50,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Christian Tzolov
  * @author Thomas Vitale
  * @author Brian Sam-Bodden
+ * @author Yanming Zhou
  */
 @Testcontainers
 class RedisVectorStoreAutoConfigurationIT {
@@ -137,6 +140,16 @@ class RedisVectorStoreAutoConfigurationIT {
 			assertThat(context.getBeansOfType(VectorStore.class)).isNotEmpty();
 			assertThat(context.getBean(VectorStore.class)).isInstanceOf(RedisVectorStore.class);
 		});
+	}
+
+	@SuppressWarnings("resource")
+	@Test
+	public void customJedisClient() {
+		RedisClient redisClient = mock(RedisClient.class);
+		this.contextRunner.withPropertyValues("spring.ai.vectorstore.type=redis")
+			.withBean("vectorStoreJedisClient", RedisClient.class, () -> redisClient)
+			.run(context -> assertThat(context.getBean(RedisVectorStore.class)).extracting("jedisClient")
+				.isSameAs(redisClient));
 	}
 
 	@Configuration(proxyBeanMethods = false)

@@ -28,7 +28,9 @@ import org.springframework.ai.vectorstore.SpringAIVectorStoreTypes;
 import org.springframework.ai.vectorstore.observation.VectorStoreObservationConvention;
 import org.springframework.ai.vectorstore.redis.RedisVectorStore;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -64,6 +66,29 @@ public class RedisVectorStoreAutoConfiguration {
 	}
 
 	/**
+	 * Creates a RedisClient client for Redis connections, honoring the SSL, password,
+	 * client name, and timeout settings from the {@link JedisConnectionFactory}.
+	 * @param jedisConnectionFactory the Jedis connection factory
+	 * @return the RedisClient client
+	 */
+	@Bean(defaultCandidate = false)
+	@ConditionalOnMissingBean(name = "vectorStoreJedisClient")
+	@ConditionalOnBean(EmbeddingModel.class)
+	public RedisClient vectorStoreJedisClient(final JedisConnectionFactory jedisConnectionFactory) {
+		String host = jedisConnectionFactory.getHostName();
+		int port = jedisConnectionFactory.getPort();
+
+		JedisClientConfig clientConfig = DefaultJedisClientConfig.builder()
+			.ssl(jedisConnectionFactory.isUseSsl())
+			.clientName(jedisConnectionFactory.getClientName())
+			.timeoutMillis(jedisConnectionFactory.getTimeout())
+			.password(jedisConnectionFactory.getPassword())
+			.build();
+
+		return RedisClient.builder().hostAndPort(host, port).clientConfig(clientConfig).build();
+	}
+
+	/**
 	 * Creates a Redis vector store.
 	 * @param embeddingModel the embedding model
 	 * @param properties the Redis vector store properties
@@ -75,13 +100,13 @@ public class RedisVectorStoreAutoConfiguration {
 	 */
 	@Bean
 	@ConditionalOnMissingBean
-	public RedisVectorStore vectorStore(final EmbeddingModel embeddingModel,
-			final RedisVectorStoreProperties properties, final JedisConnectionFactory jedisConnectionFactory,
+	@ConditionalOnBean(EmbeddingModel.class)
+	public RedisVectorStore vectorStore(@Qualifier("vectorStoreJedisClient") final RedisClient jedisClient,
+			final EmbeddingModel embeddingModel, final RedisVectorStoreProperties properties,
+			final JedisConnectionFactory jedisConnectionFactory,
 			final ObjectProvider<ObservationRegistry> observationRegistry,
 			final ObjectProvider<VectorStoreObservationConvention> convention,
 			final BatchingStrategy batchingStrategy) {
-
-		RedisClient jedisClient = jedisClient(jedisConnectionFactory);
 		RedisVectorStore.Builder builder = RedisVectorStore.builder(jedisClient, embeddingModel)
 			.initializeSchema(properties.isInitializeSchema())
 			.observationRegistry(observationRegistry.getIfUnique(() -> ObservationRegistry.NOOP))
@@ -106,21 +131,6 @@ public class RedisVectorStoreAutoConfiguration {
 		builder.hnswM(properties.getHnsw().getM())
 			.hnswEfConstruction(properties.getHnsw().getEfConstruction())
 			.hnswEfRuntime(properties.getHnsw().getEfRuntime());
-	}
-
-	private RedisClient jedisClient(final JedisConnectionFactory jedisConnectionFactory) {
-
-		String host = jedisConnectionFactory.getHostName();
-		int port = jedisConnectionFactory.getPort();
-
-		JedisClientConfig clientConfig = DefaultJedisClientConfig.builder()
-			.ssl(jedisConnectionFactory.isUseSsl())
-			.clientName(jedisConnectionFactory.getClientName())
-			.timeoutMillis(jedisConnectionFactory.getTimeout())
-			.password(jedisConnectionFactory.getPassword())
-			.build();
-
-		return RedisClient.builder().hostAndPort(host, port).clientConfig(clientConfig).build();
 	}
 
 }

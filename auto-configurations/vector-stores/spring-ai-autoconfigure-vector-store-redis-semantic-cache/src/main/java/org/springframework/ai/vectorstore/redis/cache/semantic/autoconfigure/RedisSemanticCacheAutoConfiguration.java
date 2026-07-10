@@ -27,6 +27,7 @@ import org.springframework.ai.chat.client.advisor.api.StreamAdvisor;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.transformers.TransformersEmbeddingModel;
 import org.springframework.ai.vectorstore.redis.cache.semantic.DefaultSemanticCache;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -80,10 +81,10 @@ public class RedisSemanticCacheAutoConfiguration {
 	 * @param jedisConnectionFactory the Jedis connection factory
 	 * @return the RedisClient client
 	 */
-	@Bean
-	@ConditionalOnMissingBean
+	@Bean(defaultCandidate = false)
+	@ConditionalOnMissingBean(name = "semanticCacheJedisClient")
 	@ConditionalOnBean(EmbeddingModel.class)
-	public RedisClient jedisClient(final JedisConnectionFactory jedisConnectionFactory) {
+	public RedisClient semanticCacheJedisClient(final JedisConnectionFactory jedisConnectionFactory) {
 		String host = jedisConnectionFactory.getHostName();
 		int port = jedisConnectionFactory.getPort();
 
@@ -107,8 +108,8 @@ public class RedisSemanticCacheAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	@ConditionalOnBean(EmbeddingModel.class)
-	public SemanticCache semanticCache(final RedisClient jedisClient, final EmbeddingModel embeddingModel,
-			final RedisSemanticCacheProperties properties) {
+	public SemanticCache semanticCache(@Qualifier("semanticCacheJedisClient") final RedisClient jedisClient,
+			final EmbeddingModel embeddingModel, final RedisSemanticCacheProperties properties) {
 		DefaultSemanticCache.Builder builder = DefaultSemanticCache.builder()
 			.jedisClient(jedisClient)
 			.embeddingModel(embeddingModel);

@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import redis.clients.jedis.RedisClient;
 
 import org.springframework.ai.chat.cache.semantic.SemanticCache;
 import org.springframework.ai.chat.cache.semantic.SemanticCacheAdvisor;
@@ -39,6 +40,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * Integration tests for {@link RedisSemanticCacheAutoConfiguration}.
@@ -101,6 +103,17 @@ class RedisSemanticCacheAutoConfigurationIT {
 				assertThat(context.getBeansOfType(DefaultSemanticCache.class)).isEmpty();
 				assertThat(context.getBeansOfType(SemanticCacheAdvisor.class)).isEmpty();
 			});
+	}
+
+	@SuppressWarnings("resource")
+	@Test
+	public void customJedisClient() {
+		RedisClient redisClient = mock(RedisClient.class);
+		this.contextRunner.withPropertyValues("spring.ai.vectorstore.type=redis")
+			.withBean("semanticCacheJedisClient", RedisClient.class, () -> redisClient)
+			.run(context -> assertThat(context.getBean(SemanticCache.class)).extracting("vectorStore")
+				.extracting("jedisClient")
+				.isSameAs(redisClient));
 	}
 
 	@Configuration

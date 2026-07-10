@@ -22,6 +22,7 @@ import com.redis.testcontainers.RedisStackContainer;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import redis.clients.jedis.RedisClient;
 
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.repository.redis.RedisChatMemoryRepository;
@@ -30,6 +31,7 @@ import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfigurat
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 @Testcontainers
 class RedisChatMemoryRepositoryAutoConfigurationIT {
@@ -87,6 +89,16 @@ class RedisChatMemoryRepositoryAutoConfigurationIT {
 
 			assertThat(repository).isSameAs(redisChatMemory);
 		});
+	}
+
+	@SuppressWarnings("resource")
+	@Test
+	void customRedisClient() {
+		RedisClient redisClient = mock(RedisClient.class);
+		this.contextRunner.withPropertyValues("spring.ai.chat.memory.repository.redis.initialize-schema=false")
+			.withBean("chatMemoryRepositoryJedisClient", RedisClient.class, () -> redisClient)
+			.run(context -> assertThat(context.getBean(RedisChatMemoryRepository.class)).extracting("jedisClient")
+				.isSameAs(redisClient));
 	}
 
 }

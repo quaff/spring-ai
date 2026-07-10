@@ -22,6 +22,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.repository.redis.RedisChatMemoryRepository;
 import org.springframework.ai.model.chat.memory.autoconfigure.ChatMemoryAutoConfiguration;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -68,15 +69,16 @@ public class RedisChatMemoryRepositoryAutoConfiguration {
 		return properties;
 	}
 
-	@Bean
-	@ConditionalOnMissingBean
-	public RedisClient jedisClient(RedisChatMemoryRepositoryProperties properties) {
+	@Bean(defaultCandidate = false)
+	@ConditionalOnMissingBean(name = "chatMemoryRepositoryJedisClient")
+	public RedisClient chatMemoryRepositoryJedisClient(RedisChatMemoryRepositoryProperties properties) {
 		return RedisClient.builder().hostAndPort(properties.getHost(), properties.getPort()).build();
 	}
 
 	@Bean
 	@ConditionalOnMissingBean({ RedisChatMemoryRepository.class, ChatMemory.class, ChatMemoryRepository.class })
-	public RedisChatMemoryRepository redisChatMemoryRepository(RedisClient jedisClient,
+	public RedisChatMemoryRepository redisChatMemoryRepository(
+			@Qualifier("chatMemoryRepositoryJedisClient") RedisClient jedisClient,
 			RedisChatMemoryRepositoryProperties properties) {
 		RedisChatMemoryRepository.Builder builder = RedisChatMemoryRepository.builder().jedisClient(jedisClient);
 
